@@ -45,6 +45,29 @@ export default [
         afterEach: 'readonly',
         beforeAll: 'readonly',
         afterAll: 'readonly',
+        // Hardhat globals
+        ethers: 'readonly',
+        hre: 'readonly',
+        network: 'readonly',
+        artifacts: 'readonly',
+        waffle: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['scripts/**/*.js', 'ignition/**/*.js', 'hardhat.config.{js,cjs}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        // Hardhat globals for scripts and config
+        ethers: 'readonly',
+        hre: 'readonly',
+        network: 'readonly',
+        artifacts: 'readonly',
+        task: 'readonly',
+        subtask: 'readonly',
+        extendConfig: 'readonly',
+        extendEnvironment: 'readonly',
       },
     },
   },
