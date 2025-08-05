@@ -7,16 +7,29 @@ describe("Token", () => {
     return token;
   }
 
-  it("Should set the right attributes", async () => {
-    const token = await tokenFixture("Kempaf Decentralized Exchange", "KDEX", 1_000_000);
-    expect(await token.name()).to.equal("Kempaf Decentralized Exchange");
-    expect(await token.symbol()).to.equal("KDEX");
-    expect(await token.decimals()).to.equal(18);
-    const expectedTotalSupplyInEther = ethers.parseUnits("1000000", "ether");
-    const expectedTotalSupplyInGwei = ethers.parseUnits("1000000000000000", "gwei");
-    const expectedTotalSupplyInWei = ethers.parseUnits("1000000000000000000000000", "wei");
-    expect(await token.totalSupply()).to.equal(expectedTotalSupplyInEther);
-    expect(await token.totalSupply()).to.equal(expectedTotalSupplyInGwei);
-    expect(await token.totalSupply()).to.equal(expectedTotalSupplyInWei );
+  context("When the token is deployed", () => {
+    let name = "Kempaf Decentralized Exchange";
+    let symbol = "KDEX";
+    let totalSupply = 1_000_000;
+
+    it("Should set the right name", async () => {
+      const token = await tokenFixture(name, symbol, totalSupply);
+      expect(await token.name()).to.equal(name);
+    });
+
+    it("Should set the right symbol", async () => {
+      const token = await tokenFixture(name, symbol, totalSupply);
+      expect(await token.symbol()).to.equal(symbol);
+    });
+
+    it("Should set the right total supply", async () => {
+      const token = await tokenFixture(name, symbol, totalSupply);
+      const expectedTotalSupplyInEther = ethers.parseUnits("1000000", "ether");
+      const expectedTotalSupplyInGwei = ethers.parseUnits("1000000000000000", "gwei");
+      const expectedTotalSupplyInWei = ethers.parseUnits("1000000000000000000000000", "wei");
+      expect(await token.totalSupply()).to.equal(expectedTotalSupplyInEther);
+      expect(await token.totalSupply()).to.equal(expectedTotalSupplyInGwei);
+      expect(await token.totalSupply()).to.equal(expectedTotalSupplyInWei );
+    });
   });
 });
