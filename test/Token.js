@@ -21,4 +21,14 @@ describe("Token", () => {
     const token = await tokenFixture();
     expect(await token.decimals()).to.equal(18);
   });
+
+  it("Should set the right total supply", async () => {
+    const token = await tokenFixture();
+    const expectedTotalSupplyInEther = ethers.parseUnits("1000000", "ether");
+    const expectedTotalSupplyInGwei = ethers.parseUnits("1000000000000000", "gwei");
+    const expectedTotalSupplyInWei = ethers.parseUnits("1000000000000000000000000", "wei");
+    expect(await token.totalSupply()).to.equal(expectedTotalSupplyInEther);
+    expect(await token.totalSupply()).to.equal(expectedTotalSupplyInGwei);
+    expect(await token.totalSupply()).to.equal(expectedTotalSupplyInWei );
+  });
 });

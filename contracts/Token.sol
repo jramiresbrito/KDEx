@@ -8,4 +8,5 @@ contract Token {
     string public name = "Kempaf Decentralized Exchange";
     string public symbol = "KDEX";
     uint8 public decimals = 18;
+    uint256 public totalSupply = 1_000_000 * 10 ** decimals;
 }
