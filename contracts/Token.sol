@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import "hardhat/console.sol";
-
 // Follows the ERC20 standard: https://ethereum.org/en/developers/docs/standards/tokens/erc-20/
 contract Token {
     string public name;
     string public symbol;
     uint8 public decimals = 18;
     uint256 public totalSupply;
+
+    mapping(address => uint256) public balanceOf;
 
     constructor(
         string memory _name,
@@ -18,5 +18,6 @@ contract Token {
         name = _name;
         symbol = _symbol;
         totalSupply = _totalSupply * (10 ** decimals);
+        balanceOf[msg.sender] = totalSupply;
     }
 }
