@@ -18,29 +18,37 @@ describe("Token", () => {
     let symbol = "KDEX";
     let totalSupply = 1_000_000;
 
+    let token, owner;
+    beforeEach(async () => {
+      token = await tokenFixture(name, symbol, totalSupply);
+      owner = await getTokenOwner();
+    });
+
     it("Should set the right name", async () => {
-      const token = await tokenFixture(name, symbol, totalSupply);
       expect(await token.name()).to.equal(name);
     });
 
     it("Should set the right symbol", async () => {
-      const token = await tokenFixture(name, symbol, totalSupply);
       expect(await token.symbol()).to.equal(symbol);
     });
 
     it("Should set the right total supply", async () => {
-      const token = await tokenFixture(name, symbol, totalSupply);
       const expectedTotalSupplyInEther = ethers.parseUnits("1000000", "ether");
-      const expectedTotalSupplyInGwei = ethers.parseUnits("1000000000000000", "gwei");
-      const expectedTotalSupplyInWei = ethers.parseUnits("1000000000000000000000000", "wei");
+      const expectedTotalSupplyInGwei = ethers.parseUnits(
+        "1000000000000000",
+        "gwei"
+      );
+      const expectedTotalSupplyInWei = ethers.parseUnits(
+        "1000000000000000000000000",
+        "wei"
+      );
+
       expect(await token.totalSupply()).to.equal(expectedTotalSupplyInEther);
       expect(await token.totalSupply()).to.equal(expectedTotalSupplyInGwei);
-      expect(await token.totalSupply()).to.equal(expectedTotalSupplyInWei );
+      expect(await token.totalSupply()).to.equal(expectedTotalSupplyInWei);
     });
 
     it("Should set the right balance of the owner", async () => {
-      const owner = await getTokenOwner();
-      const token = await tokenFixture(name, symbol, totalSupply);
       const expectedBalance = ethers.parseUnits("1000000", "ether");
 
       expect(await token.totalSupply()).to.equal(expectedBalance);
@@ -51,6 +59,49 @@ describe("Token", () => {
       for (let i = 1; i < Math.min(signers.length, 5); i++) {
         expect(await token.balanceOf(signers[i].address)).to.equal(0);
       }
+    });
+
+    it("Should fail if the sender does not have enough balance", async () => {
+      const [_owner, sender, receiver] = await ethers.getSigners();
+      const randomValue = Math.floor(Math.random() * 1000);
+      const transferAmount = ethers.parseEther(randomValue.toString());
+
+      await expect(
+        token.connect(sender).transfer(receiver.address, transferAmount)
+      ).to.be.revertedWith("Insufficient balance");
+
+      expect(await token.balanceOf(sender.address)).to.equal(0);
+      expect(await token.balanceOf(receiver.address)).to.equal(0);
+    });
+
+    it("Should fail if the receiver is the zero address", async () => {
+      const randomValue = Math.floor(Math.random() * 1000);
+      const transferAmount = ethers.parseEther(randomValue.toString());
+
+      await expect(
+        token.connect(owner).transfer(ethers.ZeroAddress, transferAmount)
+      ).to.be.revertedWith("Cannot transfer to the zero address");
+    });
+
+    it("Should transfer tokens between accounts", async () => {
+      const receiver = (await ethers.getSigners())[1];
+      const randomValue = Math.floor(Math.random() * 1000);
+      const transferAmount = ethers.parseEther(randomValue.toString());
+
+      // Perform the transfer
+      expect(
+        await token.connect(owner).transfer(receiver.address, transferAmount)
+      )
+        .to.emit(token, "Transfer")
+        .withArgs(owner.address, receiver.address, transferAmount);
+
+      // Calculate expected balances
+      const expectedOwnerBalance = (await token.totalSupply()) - transferAmount;
+
+      expect(await token.balanceOf(owner.address)).to.equal(
+        expectedOwnerBalance
+      );
+      expect(await token.balanceOf(receiver.address)).to.equal(transferAmount);
     });
   });
 });
