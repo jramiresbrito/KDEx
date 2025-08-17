@@ -9,8 +9,14 @@ contract Token {
     uint256 public totalSupply;
 
     mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
 
     event Transfer(address indexed _from, address indexed _to, uint256 _value);
+    event Approval(
+        address indexed _owner,
+        address indexed _spender,
+        uint256 _value
+    );
 
     constructor(
         string memory _name,
@@ -33,7 +39,31 @@ contract Token {
 
         balanceOf[msg.sender] -= _value;
         balanceOf[_to] += _value;
+
         emit Transfer(msg.sender, _to, _value);
+
+        return true;
+    }
+
+    function _approve(
+        address _owner,
+        address _spender,
+        uint256 _value
+    ) internal {
+        require(_owner != address(0), "Cannot approve the zero address");
+        require(_spender != address(0), "Cannot approve the zero address");
+
+        allowance[_owner][_spender] = _value;
+
+        emit Approval(_owner, _spender, _value);
+    }
+
+    function approve(
+        address _spender,
+        uint256 _value
+    ) public returns (bool success) {
+        _approve(msg.sender, _spender, _value);
+
         return true;
     }
 }

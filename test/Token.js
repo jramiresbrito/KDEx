@@ -18,10 +18,13 @@ describe("Token", () => {
     let symbol = "KDEX";
     let totalSupply = 1_000_000;
 
-    let token, owner;
+    let token, owner, randomValue, transferAmount;
+
     beforeEach(async () => {
       token = await tokenFixture(name, symbol, totalSupply);
       owner = await getTokenOwner();
+      randomValue = Math.floor(Math.random() * 1000);
+      transferAmount = ethers.parseEther(randomValue.toString());
     });
 
     it("Should set the right name", async () => {
@@ -63,8 +66,6 @@ describe("Token", () => {
 
     it("Should fail if the sender does not have enough balance", async () => {
       const [_owner, sender, receiver] = await ethers.getSigners();
-      const randomValue = Math.floor(Math.random() * 1000);
-      const transferAmount = ethers.parseEther(randomValue.toString());
 
       await expect(
         token.connect(sender).transfer(receiver.address, transferAmount)
@@ -75,9 +76,6 @@ describe("Token", () => {
     });
 
     it("Should fail if the receiver is the zero address", async () => {
-      const randomValue = Math.floor(Math.random() * 1000);
-      const transferAmount = ethers.parseEther(randomValue.toString());
-
       await expect(
         token.connect(owner).transfer(ethers.ZeroAddress, transferAmount)
       ).to.be.revertedWith("Cannot transfer to the zero address");
@@ -85,8 +83,6 @@ describe("Token", () => {
 
     it("Should transfer tokens between accounts", async () => {
       const receiver = (await ethers.getSigners())[1];
-      const randomValue = Math.floor(Math.random() * 1000);
-      const transferAmount = ethers.parseEther(randomValue.toString());
 
       // Perform the transfer
       expect(
@@ -102,6 +98,34 @@ describe("Token", () => {
         expectedOwnerBalance
       );
       expect(await token.balanceOf(receiver.address)).to.equal(transferAmount);
+    });
+
+    it("Should fail approve the zero address", async () => {
+      await expect(
+        token.connect(owner).approve(ethers.ZeroAddress, transferAmount)
+      ).to.be.revertedWith("Cannot approve the zero address");
+    });
+
+    it("Should approve the spender if the value is zero", async () => {
+      const [_owner, spender] = await ethers.getSigners();
+
+      await expect(token.connect(owner).approve(spender.address, 0))
+        .to.emit(token, "Approval")
+        .withArgs(owner.address, spender.address, 0);
+
+      expect(await token.allowance(owner.address, spender.address)).to.equal(0);
+    });
+
+    it("Should approve the spender if the value is greater than zero", async () => {
+      const [_owner, spender] = await ethers.getSigners();
+
+      await expect(token.connect(owner).approve(spender.address, transferAmount))
+        .to.emit(token, "Approval")
+        .withArgs(owner.address, spender.address, transferAmount);
+
+      expect(await token.allowance(owner.address, spender.address)).to.equal(
+        transferAmount
+      );
     });
   });
 });
