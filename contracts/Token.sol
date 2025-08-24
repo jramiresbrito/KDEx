@@ -53,14 +53,25 @@ contract Token {
     function _approve(
         address _owner,
         address _spender,
-        uint256 _value
+        uint256 _value,
+        bool emitEvent
     ) internal {
         require(_owner != address(0), "Cannot approve the zero address");
         require(_spender != address(0), "Cannot approve the zero address");
 
         allowance[_owner][_spender] = _value;
 
-        emit Approval(_owner, _spender, _value);
+        if (emitEvent) {
+            emit Approval(_owner, _spender, _value);
+        }
+    }
+
+    function _approve(
+        address _owner,
+        address _spender,
+        uint256 _value
+    ) internal {
+        _approve(_owner, _spender, _value, true);
     }
 
     function approve(
@@ -69,6 +80,32 @@ contract Token {
     ) public returns (bool success) {
         _approve(msg.sender, _spender, _value);
 
+        return true;
+    }
+
+    function _spendAllowance(
+        address owner,
+        address spender,
+        uint256 value
+    ) internal {
+        uint256 currentAllowance = allowance[owner][spender];
+
+        if (currentAllowance < type(uint256).max) {
+            require(currentAllowance >= value, "Insufficient allowance");
+
+            unchecked {
+                _approve(owner, spender, currentAllowance - value, false);
+            }
+        }
+    }
+
+    function transferFrom(
+        address _from,
+        address _to,
+        uint256 _value
+    ) public returns (bool success) {
+        _spendAllowance(_from, msg.sender, _value);
+        _transfer(_from, _to, _value);
         return true;
     }
 }

@@ -119,13 +119,56 @@ describe("Token", () => {
     it("Should approve the spender if the value is greater than zero", async () => {
       const [_owner, spender] = await ethers.getSigners();
 
-      await expect(token.connect(owner).approve(spender.address, transferAmount))
+      await expect(
+        token.connect(owner).approve(spender.address, transferAmount)
+      )
         .to.emit(token, "Approval")
         .withArgs(owner.address, spender.address, transferAmount);
 
       expect(await token.allowance(owner.address, spender.address)).to.equal(
         transferAmount
       );
+    });
+
+    context("Delegated transfers", () => {
+      let spender, receiver;
+
+      beforeEach(async () => {
+        [owner, spender, receiver] = await ethers.getSigners();
+      });
+
+      it("Should fail if the spender does not have enough allowance", async () => {
+        await expect(
+          token
+            .connect(spender)
+            .transferFrom(owner.address, receiver.address, transferAmount)
+        ).to.be.revertedWith("Insufficient allowance");
+      });
+
+      it("Should work if the allowance is enough", async () => {
+        const expectedOwnerBalance =
+          (await token.totalSupply()) - transferAmount;
+
+        await token.connect(owner).approve(spender.address, transferAmount);
+
+        await expect(
+          token
+            .connect(spender)
+            .transferFrom(owner.address, receiver.address, transferAmount)
+        )
+          .to.emit(token, "Transfer")
+          .withArgs(owner.address, receiver.address, transferAmount);
+
+        expect(await token.balanceOf(owner.address)).to.equal(
+          expectedOwnerBalance
+        );
+        expect(await token.balanceOf(receiver.address)).to.equal(
+          transferAmount
+        );
+        expect(await token.allowance(owner.address, spender.address)).to.equal(
+          0
+        );
+      });
     });
   });
 });
