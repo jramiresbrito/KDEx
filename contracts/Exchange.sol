@@ -15,6 +15,13 @@ contract Exchange {
         uint256 balance
     );
 
+    event Withdraw(
+        address indexed user,
+        address indexed tokenAddress,
+        uint256 amount,
+        uint256 balance
+    );
+
     constructor(address _feeAccount, uint256 _feePercentage) {
         feeAccount = _feeAccount;
         feePercentage = _feePercentage;
@@ -34,6 +41,24 @@ contract Exchange {
         balances[msg.sender][tokenAddress] += amount;
 
         emit Deposit(
+            msg.sender,
+            tokenAddress,
+            amount,
+            balances[msg.sender][tokenAddress]
+        );
+    }
+
+    function withdraw(address tokenAddress, uint256 amount) public {
+        require(amount > 0, "Withdraw amount must be greater than 0");
+        require(
+            balances[msg.sender][tokenAddress] >= amount,
+            "Insufficient balance"
+        );
+
+        balances[msg.sender][tokenAddress] -= amount;
+        Token(tokenAddress).transfer(msg.sender, amount);
+
+        emit Withdraw(
             msg.sender,
             tokenAddress,
             amount,

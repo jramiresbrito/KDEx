@@ -107,4 +107,45 @@ describe("Exchange", () => {
       ).to.equal(tokens(randomValue));
     });
   });
+
+  context("Withdrawing", () => {
+    beforeEach(async () => {
+      await approveAndDeposit(randomValue, token1, token1Address);
+    });
+
+    it("Should withdraw tokens from the exchange", async () => {
+      expect(await exchange.withdraw(token1Address, tokens(randomValue)))
+        .to.emit(exchange, "Withdraw")
+        .withArgs(
+          deployer.address,
+          token1Address,
+          tokens(randomValue),
+          tokens(randomValue - randomValue)
+        );
+
+      expect(await exchange.balanceOf(deployer.address, token1Address)).to.equal(
+        tokens(randomValue - randomValue)
+      );
+
+      expect(await token1.balanceOf(deployer.address)).to.equal(
+        tokens(1_000_000)
+      );
+
+      expect(await token1.balanceOf(exchangeAddress)).to.equal(
+        tokens(0)
+      );
+    });
+
+    it("Should fail if the amount is zero", async () => {
+      await expect(exchange.withdraw(token1Address, 0)).to.be.revertedWith(
+        "Withdraw amount must be greater than 0"
+      );
+    });
+
+    it("Should fail if the user does not have enough balance", async () => {
+      await expect(
+        exchange.withdraw(token1Address, tokens(randomValue + 1))
+      ).to.be.revertedWith("Insufficient balance");
+    });
+  });
 });
