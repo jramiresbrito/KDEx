@@ -11,12 +11,20 @@ contract Exchange {
     event Deposit(
         address indexed user,
         address indexed tokenAddress,
-        uint256 amount
+        uint256 amount,
+        uint256 balance
     );
 
     constructor(address _feeAccount, uint256 _feePercentage) {
         feeAccount = _feeAccount;
         feePercentage = _feePercentage;
+    }
+
+    function balanceOf(
+        address user,
+        address tokenAddress
+    ) public view returns (uint256) {
+        return balances[user][tokenAddress];
     }
 
     function deposit(address tokenAddress, uint256 amount) public {
@@ -25,6 +33,11 @@ contract Exchange {
         Token(tokenAddress).transferFrom(msg.sender, address(this), amount);
         balances[msg.sender][tokenAddress] += amount;
 
-        emit Deposit(msg.sender, tokenAddress, amount);
+        emit Deposit(
+            msg.sender,
+            tokenAddress,
+            amount,
+            balances[msg.sender][tokenAddress]
+        );
     }
 }

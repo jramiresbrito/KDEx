@@ -23,7 +23,7 @@ describe("Exchange", () => {
     feeAccount,
     feePercentage,
     token1,
-    tokenAddress,
+    token1Address,
     randomValue;
 
   beforeEach(async () => {
@@ -38,8 +38,13 @@ describe("Exchange", () => {
     exchangeAddress = await exchange.getAddress();
 
     token1 = await tokenFixture("Test Token", "TTT", 1_000_000);
-    tokenAddress = await token1.getAddress();
+    token1Address = await token1.getAddress();
   });
+
+  const approveAndDeposit = async (amount, token, tokenAddress) => {
+    await token.connect(deployer).approve(exchangeAddress, tokens(amount));
+    await exchange.deposit(tokenAddress, tokens(amount));
+  };
 
   context("Deployment", () => {
     it("Should set the right fee account", async () => {
@@ -52,40 +57,54 @@ describe("Exchange", () => {
   });
 
   context("Depositing", () => {
-    const approveAndDeposit = async (amount) => {
-      await token1.connect(deployer).approve(exchangeAddress, tokens(amount));
-      await exchange.deposit(tokenAddress, tokens(amount));
-    };
-
     it("Should deposit tokens to the exchange", async () => {
-      expect(await approveAndDeposit(randomValue)).to.emit(
-        exchange,
-        "Deposit"
-      ).withArgs(deployer.address, tokenAddress, tokens(randomValue));
+      expect(await approveAndDeposit(randomValue, token1, token1Address))
+        .to.emit(exchange, "Deposit")
+        .withArgs(
+          deployer.address,
+          token1Address,
+          tokens(randomValue),
+          tokens(randomValue)
+        );
 
-      expect(await exchange.balances(deployer.address, tokenAddress)).to.equal(
+      expect(await exchange.balances(deployer.address, token1Address)).to.equal(
         tokens(randomValue)
-      )
+      );
 
       expect(await token1.balanceOf(exchangeAddress)).to.equal(
         tokens(randomValue)
-      )
+      );
 
       expect(await token1.balanceOf(deployer.address)).to.equal(
         tokens(1_000_000 - randomValue)
-      )
+      );
     });
 
     it("Should fail if the amount is zero", async () => {
-      await expect(approveAndDeposit(0)).to.be.revertedWith(
-        "Deposit amount must be greater than 0"
-      )
+      await expect(
+        approveAndDeposit(0, token1, token1Address)
+      ).to.be.revertedWith("Deposit amount must be greater than 0");
     });
 
     it("Should fail if the sender does not have enough balance", async () => {
-      await expect(approveAndDeposit(1_000_001)).to.be.revertedWith(
-        "Insufficient balance"
-      )
+      await expect(
+        approveAndDeposit(1_000_001, token1, token1Address)
+      ).to.be.revertedWith("Insufficient balance");
+    });
+
+    it("Should fail if the token was not approved", async () => {
+      await expect(
+        exchange.deposit(token1Address, tokens(randomValue))
+      ).to.be.revertedWith("Insufficient allowance");
+    });
+  });
+
+  context("Balances", () => {
+    it("Should allow check the user balance", async () => {
+      await approveAndDeposit(randomValue, token1, token1Address);
+      expect(
+        await exchange.balanceOf(deployer.address, token1Address)
+      ).to.equal(tokens(randomValue));
     });
   });
 });
