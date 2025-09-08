@@ -159,7 +159,7 @@ describe("Exchange", () => {
       amountGet: orderArray[3],
       tokenGiven: orderArray[4],
       amountGiven: orderArray[5],
-      timestamp: orderArray[6]
+      timestamp: orderArray[6],
     });
 
     beforeEach(async () => {
@@ -200,7 +200,7 @@ describe("Exchange", () => {
         amountGet: tokens(randomValue / 2),
         tokenGiven: token1Address,
         amountGiven: tokens(randomValue / 2),
-        timestamp: block.timestamp
+        timestamp: block.timestamp,
       });
     });
 
@@ -238,6 +238,57 @@ describe("Exchange", () => {
         )
       ).to.be.revertedWith("Insufficient balance");
       expect(await exchange.totalOrders()).to.equal(0);
+    });
+  });
+
+  context("Cancelling Orders", () => {
+    beforeEach(async () => {
+      await approveAndDeposit(randomValue, token1, token1Address);
+      await exchange.makeOrder(
+        token2Address,
+        tokens(randomValue / 2),
+        token1Address,
+        tokens(randomValue / 2)
+      );
+    });
+
+    it("Should cancel an order", async () => {
+      const tx = await exchange.cancelOrder(0);
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      await expect(tx)
+        .to.emit(exchange, "OrderCancelled")
+        .withArgs(
+          0,
+          deployer.address,
+          token2Address,
+          tokens(randomValue / 2),
+          token1Address,
+          tokens(randomValue / 2),
+          block.timestamp
+        );
+      expect(await exchange.isOrderCancelled(0)).to.equal(true);
+    });
+
+    it("Should fail if the user it not the owner of the order", async () => {
+      await expect(exchange.connect(feeAccount).cancelOrder(0)).to.be.revertedWith(
+        "You are not the owner of this order"
+      )
+    });
+
+    it("Should fail if the order does not exist", async () => {
+      await expect(exchange.cancelOrder(1)).to.be.revertedWith(
+        "Order does not exist"
+      );
+    });
+
+    it("Should fail if the order is already cancelled", async () => {
+      await exchange.cancelOrder(0);
+
+      await expect(exchange.cancelOrder(0)).to.be.revertedWith(
+        "Order already cancelled"
+      );
     });
   });
 });

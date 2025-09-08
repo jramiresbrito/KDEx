@@ -6,9 +6,11 @@ import "./Token.sol";
 contract Exchange {
     address public feeAccount;
     uint256 public feePercentage;
+    uint256 public totalOrders;
+
     mapping(address => mapping(address => uint256)) public balances;
     mapping(uint256 => _Order) public orders;
-    uint256 public totalOrders;
+    mapping(uint256 => bool) public isOrderCancelled;
 
     struct _Order {
         uint256 id;
@@ -35,6 +37,16 @@ contract Exchange {
     );
 
     event Order(
+        uint256 id,
+        address indexed user,
+        address indexed tokenGet,
+        uint256 amountGet,
+        address indexed tokenGiven,
+        uint256 amountGiven,
+        uint256 timestamp
+    );
+
+    event OrderCancelled(
         uint256 id,
         address indexed user,
         address indexed tokenGet,
@@ -120,6 +132,29 @@ contract Exchange {
             amountGet,
             tokenGiven,
             amountGiven,
+            block.timestamp
+        );
+    }
+
+    function cancelOrder(uint256 id) public {
+        _Order storage order = orders[id];
+
+        require(order.id == id, "Order does not exist");
+        require(
+            order.user == msg.sender,
+            "You are not the owner of this order"
+        );
+        require(!isOrderCancelled[id], "Order already cancelled");
+
+        isOrderCancelled[id] = true;
+
+        emit OrderCancelled(
+            id,
+            order.user,
+            order.tokenGet,
+            order.amountGet,
+            order.tokenGiven,
+            order.amountGiven,
             block.timestamp
         );
     }
