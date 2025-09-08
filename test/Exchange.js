@@ -340,22 +340,26 @@ describe("Exchange", () => {
       const receipt = await tx.wait();
       const block = await ethers.provider.getBlock(receipt.blockNumber);
 
+      const expectedFee = tokens(randomValue / 2) / 100n;  // 1% fee
+
       await expect(tx)
-        .to.emit(exchange, "OrderFilled")
+        .to.emit(exchange, "Trade")
         .withArgs(
           0,
-          orderCreator.address,
-          orderFiller.address,
-          tokens(randomValue / 2),        // fillAmountGet
-          tokens(randomValue / 2),        // fillAmountGiven
-          0,                              // remainingAmountGet (0 = complete)
-          0,                              // remainingAmountGiven (0 = complete)
+          orderCreator.address,           // maker
+          orderFiller.address,            // taker
+          tokens(randomValue / 2),        // amountGet traded
+          tokens(randomValue / 2),        // amountGiven traded
+          expectedFee,                    // fee amount (1%)
+          token1Address,                  // fee token (tokenGiven)
           block.timestamp
         );
 
       expect(await exchange.isOrderFilled(0)).to.equal(true);
 
-      // Verify balance changes
+      // Verify balance changes (including fees)
+      const netAmountForFiller = tokens(randomValue / 2) - expectedFee;
+
       expect(await exchange.balances(orderCreator.address, token1Address))
         .to.equal(tokens(randomValue - randomValue / 2)); // Creator lost token1
       expect(await exchange.balances(orderCreator.address, token2Address))
@@ -363,7 +367,9 @@ describe("Exchange", () => {
       expect(await exchange.balances(orderFiller.address, token2Address))
         .to.equal(tokens(randomValue - randomValue / 2)); // Filler lost token2
       expect(await exchange.balances(orderFiller.address, token1Address))
-        .to.equal(tokens(randomValue / 2)); // Filler gained token1
+        .to.equal(netAmountForFiller); // Filler gained token1 minus fee
+      expect(await exchange.balances(feeAccount.address, token1Address))
+        .to.equal(expectedFee); // Fee account received fee
     });
 
     it("Should partially fill an order", async () => {
@@ -373,19 +379,18 @@ describe("Exchange", () => {
       const block = await ethers.provider.getBlock(receipt.blockNumber);
 
       const fillAmountGiven = fillAmount; // 1:1 ratio in this test
-      const remainingGet = tokens(randomValue / 2) - fillAmount;
-      const remainingGiven = tokens(randomValue / 2) - fillAmountGiven;
+      const expectedFee = fillAmountGiven / 100n;  // 1% fee
 
       await expect(tx)
-        .to.emit(exchange, "OrderFilled")
+        .to.emit(exchange, "Trade")
         .withArgs(
           0,
-          orderCreator.address,
-          orderFiller.address,
-          fillAmount,                     // fillAmountGet
-          fillAmountGiven,                // fillAmountGiven
-          remainingGet,                   // remainingAmountGet (>0 = partial)
-          remainingGiven,                 // remainingAmountGiven (>0 = partial)
+          orderCreator.address,           // maker
+          orderFiller.address,            // taker
+          fillAmount,                     // amountGet traded
+          fillAmountGiven,                // amountGiven traded
+          expectedFee,                    // fee amount (1%)
+          token1Address,                  // fee token (tokenGiven)
           block.timestamp
         );
 
@@ -393,6 +398,9 @@ describe("Exchange", () => {
 
       // Verify remaining amounts in order
       const order = await exchange.orders(0);
+      const remainingGet = tokens(randomValue / 2) - fillAmount;
+      const remainingGiven = tokens(randomValue / 2) - fillAmountGiven;
+
       expect(order[4]).to.equal(remainingGet);    // amountGetRemaining
       expect(order[7]).to.equal(remainingGiven);  // amountGivenRemaining
     });

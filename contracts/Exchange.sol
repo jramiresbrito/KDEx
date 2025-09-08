@@ -59,14 +59,14 @@ contract Exchange {
         uint256 timestamp
     );
 
-    event OrderFilled(
-        uint256 indexed id,
-        address indexed user, // Order creator
-        address indexed filler, // Who filled it
-        uint256 fillAmountGet, // How much was filled this time
-        uint256 fillAmountGiven, // How much was given this time
-        uint256 remainingAmountGet, // How much still needed (0 = complete)
-        uint256 remainingAmountGiven, // How much still available (0 = complete)
+    event Trade(
+        uint256 indexed orderId,
+        address indexed maker, // Order creator
+        address indexed taker, // Order filler
+        uint256 amountGet, // Amount of tokenGet traded
+        uint256 amountGiven, // Amount of tokenGiven traded
+        uint256 feeAmount, // Fee charged to taker
+        address feeToken, // Which token the fee was paid in
         uint256 timestamp
     );
 
@@ -80,6 +80,10 @@ contract Exchange {
         address tokenAddress
     ) public view returns (uint256) {
         return balances[user][tokenAddress];
+    }
+
+    function calculateFee(uint256 amount) internal view returns (uint256) {
+        return (amount * feePercentage) / 100;
     }
 
     function deposit(address tokenAddress, uint256 amount) public {
@@ -202,11 +206,16 @@ contract Exchange {
             "Insufficient balance"
         );
 
-        // Execute trade
+        // Calculate fee (charged on what the taker receives)
+        uint256 feeAmount = calculateFee(fillAmountGiven);
+        uint256 netAmountGiven = fillAmountGiven - feeAmount;
+
+        // Execute trade with fees
         balances[order.user][order.tokenGiven] -= fillAmountGiven;
         balances[order.user][order.tokenGet] += fillAmountGet;
         balances[msg.sender][order.tokenGet] -= fillAmountGet;
-        balances[msg.sender][order.tokenGiven] += fillAmountGiven;
+        balances[msg.sender][order.tokenGiven] += netAmountGiven; // Taker gets amount minus fee
+        balances[feeAccount][order.tokenGiven] += feeAmount; // Fee goes to feeAccount
 
         // Update remaining amounts
         order.amountGetRemaining -= fillAmountGet;
@@ -217,15 +226,14 @@ contract Exchange {
             isOrderFilled[id] = true;
         }
 
-        // Always emit single event (remainingAmount = 0 means complete)
-        emit OrderFilled(
+        emit Trade(
             id,
-            order.user,
-            msg.sender,
-            fillAmountGet, // This fill amount
-            fillAmountGiven, // This fill amount
-            order.amountGetRemaining, // 0 = completely filled
-            order.amountGivenRemaining, // 0 = completely filled
+            order.user, // maker
+            msg.sender, // taker
+            fillAmountGet, // amount of tokenGet traded
+            fillAmountGiven, // amount of tokenGiven traded
+            feeAmount, // fee charged
+            order.tokenGiven, // fee token
             block.timestamp
         );
     }
