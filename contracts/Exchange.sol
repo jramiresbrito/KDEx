@@ -11,6 +11,7 @@ contract Exchange {
     mapping(address => mapping(address => uint256)) public balances;
     mapping(uint256 => _Order) public orders;
     mapping(uint256 => bool) public isOrderCancelled;
+    mapping(uint256 => bool) public isOrderFilled;
 
     struct _Order {
         uint256 id;
@@ -37,21 +38,32 @@ contract Exchange {
     );
 
     event Order(
-        uint256 id,
+        uint256 indexed id,
         address indexed user,
         address indexed tokenGet,
         uint256 amountGet,
-        address indexed tokenGiven,
+        address tokenGiven,
         uint256 amountGiven,
         uint256 timestamp
     );
 
     event OrderCancelled(
-        uint256 id,
+        uint256 indexed id,
         address indexed user,
         address indexed tokenGet,
         uint256 amountGet,
-        address indexed tokenGiven,
+        address tokenGiven,
+        uint256 amountGiven,
+        uint256 timestamp
+    );
+
+    event OrderFilled(
+        uint256 indexed id,
+        address indexed user,
+        address indexed filler,
+        address tokenGet,
+        uint256 amountGet,
+        address tokenGiven,
         uint256 amountGiven,
         uint256 timestamp
     );
@@ -145,12 +157,47 @@ contract Exchange {
             "You are not the owner of this order"
         );
         require(!isOrderCancelled[id], "Order already cancelled");
+        require(!isOrderFilled[id], "Order already filled");
 
         isOrderCancelled[id] = true;
 
         emit OrderCancelled(
             id,
             order.user,
+            order.tokenGet,
+            order.amountGet,
+            order.tokenGiven,
+            order.amountGiven,
+            block.timestamp
+        );
+    }
+
+    function fillOrder(uint256 id) public {
+        _Order storage order = orders[id];
+
+        require(order.id == id, "Order does not exist");
+        require(!isOrderCancelled[id], "Order already cancelled");
+        require(!isOrderFilled[id], "Order already filled");
+        require(
+            balances[order.user][order.tokenGiven] >= order.amountGiven,
+            "The user who put the order does not have enough balance of token given"
+        );
+        require(
+            balances[msg.sender][order.tokenGet] >= order.amountGet,
+            "Insufficient balance"
+        );
+
+        balances[order.user][order.tokenGiven] -= order.amountGiven;
+        balances[order.user][order.tokenGet] += order.amountGet;
+        balances[msg.sender][order.tokenGet] -= order.amountGet;
+        balances[msg.sender][order.tokenGiven] += order.amountGiven;
+
+        isOrderFilled[id] = true;
+
+        emit OrderFilled(
+            id,
+            order.user,
+            msg.sender,
             order.tokenGet,
             order.amountGet,
             order.tokenGiven,

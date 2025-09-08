@@ -45,9 +45,9 @@ describe("Exchange", () => {
     token2Address = await token2.getAddress();
   });
 
-  const approveAndDeposit = async (amount, token, tokenAddress) => {
-    await token.connect(deployer).approve(exchangeAddress, tokens(amount));
-    await exchange.deposit(tokenAddress, tokens(amount));
+  const approveAndDeposit = async (amount, token, tokenAddress, user = deployer) => {
+    await token.connect(user).approve(exchangeAddress, tokens(amount));
+    await exchange.connect(user).deposit(tokenAddress, tokens(amount));
   };
 
   context("Deployment", () => {
@@ -151,7 +151,7 @@ describe("Exchange", () => {
     });
   });
 
-  context("Making Orders", async () => {
+  context("Making Orders", () => {
     const structToOrder = (orderArray) => ({
       id: orderArray[0],
       user: orderArray[1],
@@ -272,9 +272,9 @@ describe("Exchange", () => {
     });
 
     it("Should fail if the user it not the owner of the order", async () => {
-      await expect(exchange.connect(feeAccount).cancelOrder(0)).to.be.revertedWith(
-        "You are not the owner of this order"
-      )
+      await expect(
+        exchange.connect(feeAccount).cancelOrder(0)
+      ).to.be.revertedWith("You are not the owner of this order");
     });
 
     it("Should fail if the order does not exist", async () => {
@@ -288,6 +288,106 @@ describe("Exchange", () => {
 
       await expect(exchange.cancelOrder(0)).to.be.revertedWith(
         "Order already cancelled"
+      );
+    });
+
+    it("Should fail if the order is already filled", async () => {
+      // Give deployer token2 so they can fill their own order
+      await approveAndDeposit(randomValue / 2, token2, token2Address, deployer);
+
+      await exchange.fillOrder(0);
+
+      await expect(exchange.cancelOrder(0)).to.be.revertedWith(
+        "Order already filled"
+      );
+    });
+  });
+
+  context("Filling Orders", () => {
+    let orderCreator, orderFiller, poorFiller;
+
+    beforeEach(async () => {
+      const accounts = await ethers.getSigners();
+      orderCreator = accounts[0];
+      orderFiller = accounts[2];
+      poorFiller = accounts[3];
+
+      // Distribute tokens to test users
+      await token2.transfer(orderFiller.address, tokens(randomValue * 2));
+      await token2.transfer(poorFiller.address, tokens(50)); // Give poorFiller some token2
+
+      // Order creator deposits token1 and creates order wanting token2
+      await approveAndDeposit(randomValue, token1, token1Address, orderCreator);
+
+      await exchange.connect(orderCreator).makeOrder(
+        token2Address,           // Creator wants token2
+        tokens(randomValue / 2), // Amount wanted
+        token1Address,           // Creator gives token1
+        tokens(randomValue / 2)  // Amount given
+      );
+
+      // Order filler deposits token2 (what the creator wants)
+      await approveAndDeposit(randomValue, token2, token2Address, orderFiller);
+    });
+
+    it("Should fill an order", async () => {
+      const tx = await exchange.connect(orderFiller).fillOrder(0);
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      await expect(tx)
+        .to.emit(exchange, "OrderFilled")
+        .withArgs(
+          0,
+          orderCreator.address,
+          orderFiller.address,
+          token2Address,
+          tokens(randomValue / 2),
+          token1Address,
+          tokens(randomValue / 2),
+          block.timestamp
+        );
+
+      expect(await exchange.isOrderFilled(0)).to.equal(true);
+
+      // Verify balance changes
+      expect(await exchange.balances(orderCreator.address, token1Address))
+        .to.equal(tokens(randomValue - randomValue / 2)); // Creator lost token1
+      expect(await exchange.balances(orderCreator.address, token2Address))
+        .to.equal(tokens(randomValue / 2)); // Creator gained token2
+      expect(await exchange.balances(orderFiller.address, token2Address))
+        .to.equal(tokens(randomValue - randomValue / 2)); // Filler lost token2
+      expect(await exchange.balances(orderFiller.address, token1Address))
+        .to.equal(tokens(randomValue / 2)); // Filler gained token1
+    });
+
+    it("Should fail if the order does not exist", async () => {
+      await expect(exchange.fillOrder(1)).to.be.revertedWith(
+        "Order does not exist"
+      )
+    });
+
+    it("Should fail if the order is cancelled", async () => {
+      await exchange.connect(orderCreator).cancelOrder(0);  // Creator cancels their order
+      await expect(exchange.connect(orderFiller).fillOrder(0)).to.be.revertedWith(
+        "Order already cancelled"
+      );
+    });
+
+    it("Should fail if the order is filled", async () => {
+      await exchange.connect(orderFiller).fillOrder(0);  // Filler fills the order
+      await expect(exchange.connect(orderFiller).fillOrder(0)).to.be.revertedWith(
+        "Order already filled"
+      );
+    });
+
+    it("Should fail if the user does not have enough balance", async () => {
+      // Poor filler has some token2, but not enough to fill the order
+      await approveAndDeposit(10, token2, token2Address, poorFiller);
+      // Order requires randomValue/2 token2, but poorFiller only has 10
+
+      await expect(exchange.connect(poorFiller).fillOrder(0)).to.be.revertedWith(
+        "Insufficient balance"
       );
     });
   });
