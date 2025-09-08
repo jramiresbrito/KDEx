@@ -24,6 +24,8 @@ describe("Exchange", () => {
     feePercentage,
     token1,
     token1Address,
+    token2,
+    token2Address,
     randomValue;
 
   beforeEach(async () => {
@@ -39,6 +41,8 @@ describe("Exchange", () => {
 
     token1 = await tokenFixture("Test Token", "TTT", 1_000_000);
     token1Address = await token1.getAddress();
+    token2 = await tokenFixture("Test Token 2", "TTT2", 1_000_000);
+    token2Address = await token2.getAddress();
   });
 
   const approveAndDeposit = async (amount, token, tokenAddress) => {
@@ -123,17 +127,15 @@ describe("Exchange", () => {
           tokens(randomValue - randomValue)
         );
 
-      expect(await exchange.balanceOf(deployer.address, token1Address)).to.equal(
-        tokens(randomValue - randomValue)
-      );
+      expect(
+        await exchange.balanceOf(deployer.address, token1Address)
+      ).to.equal(tokens(randomValue - randomValue));
 
       expect(await token1.balanceOf(deployer.address)).to.equal(
         tokens(1_000_000)
       );
 
-      expect(await token1.balanceOf(exchangeAddress)).to.equal(
-        tokens(0)
-      );
+      expect(await token1.balanceOf(exchangeAddress)).to.equal(tokens(0));
     });
 
     it("Should fail if the amount is zero", async () => {
@@ -146,6 +148,96 @@ describe("Exchange", () => {
       await expect(
         exchange.withdraw(token1Address, tokens(randomValue + 1))
       ).to.be.revertedWith("Insufficient balance");
+    });
+  });
+
+  context("Making Orders", async () => {
+    const structToOrder = (orderArray) => ({
+      id: orderArray[0],
+      user: orderArray[1],
+      tokenGet: orderArray[2],
+      amountGet: orderArray[3],
+      tokenGiven: orderArray[4],
+      amountGiven: orderArray[5],
+      timestamp: orderArray[6]
+    });
+
+    beforeEach(async () => {
+      await approveAndDeposit(randomValue, token1, token1Address);
+    });
+
+    it("Should make an order", async () => {
+      const tx = await exchange.makeOrder(
+        token2Address,
+        tokens(randomValue / 2),
+        token1Address,
+        tokens(randomValue / 2)
+      );
+
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      await expect(tx)
+        .to.emit(exchange, "Order")
+        .withArgs(
+          0,
+          deployer.address,
+          token2Address,
+          tokens(randomValue / 2),
+          token1Address,
+          tokens(randomValue / 2),
+          block.timestamp
+        );
+      expect(await exchange.totalOrders()).to.equal(1);
+
+      const orderArray = await exchange.orders(0);
+      const order = structToOrder(orderArray);
+
+      expect(order).to.deep.equal({
+        id: 0,
+        user: deployer.address,
+        tokenGet: token2Address,
+        amountGet: tokens(randomValue / 2),
+        tokenGiven: token1Address,
+        amountGiven: tokens(randomValue / 2),
+        timestamp: block.timestamp
+      });
+    });
+
+    it("Should fail if the amount get is zero", async () => {
+      await expect(
+        exchange.makeOrder(
+          token2Address,
+          0,
+          token1Address,
+          tokens(randomValue / 2)
+        )
+      ).to.be.revertedWith("Amount get must be greater than 0");
+      expect(await exchange.totalOrders()).to.equal(0);
+    });
+
+    it("Should fail if the amount given is zero", async () => {
+      await expect(
+        exchange.makeOrder(
+          token2Address,
+          tokens(randomValue / 2),
+          token1Address,
+          0
+        )
+      ).to.be.revertedWith("Amount given must be greater than 0");
+      expect(await exchange.totalOrders()).to.equal(0);
+    });
+
+    it("Should fail if the user does not have enough balance", async () => {
+      await expect(
+        exchange.makeOrder(
+          token2Address,
+          tokens(randomValue / 2),
+          token1Address,
+          tokens(randomValue * 2)
+        )
+      ).to.be.revertedWith("Insufficient balance");
+      expect(await exchange.totalOrders()).to.equal(0);
     });
   });
 });

@@ -7,6 +7,18 @@ contract Exchange {
     address public feeAccount;
     uint256 public feePercentage;
     mapping(address => mapping(address => uint256)) public balances;
+    mapping(uint256 => _Order) public orders;
+    uint256 public totalOrders;
+
+    struct _Order {
+        uint256 id;
+        address user;
+        address tokenGet;
+        uint256 amountGet;
+        address tokenGiven;
+        uint256 amountGiven;
+        uint256 timestamp;
+    }
 
     event Deposit(
         address indexed user,
@@ -20,6 +32,16 @@ contract Exchange {
         address indexed tokenAddress,
         uint256 amount,
         uint256 balance
+    );
+
+    event Order(
+        uint256 id,
+        address indexed user,
+        address indexed tokenGet,
+        uint256 amountGet,
+        address indexed tokenGiven,
+        uint256 amountGiven,
+        uint256 timestamp
     );
 
     constructor(address _feeAccount, uint256 _feePercentage) {
@@ -63,6 +85,42 @@ contract Exchange {
             tokenAddress,
             amount,
             balances[msg.sender][tokenAddress]
+        );
+    }
+
+    function makeOrder(
+        address tokenGet,
+        uint256 amountGet,
+        address tokenGiven,
+        uint256 amountGiven
+    ) public {
+        require(amountGet > 0, "Amount get must be greater than 0");
+        require(amountGiven > 0, "Amount given must be greater than 0");
+        require(
+            balances[msg.sender][tokenGiven] >= amountGiven,
+            "Insufficient balance"
+        );
+
+        uint256 id = totalOrders++;
+
+        orders[id] = _Order(
+            id,
+            msg.sender,
+            tokenGet,
+            amountGet,
+            tokenGiven,
+            amountGiven,
+            block.timestamp
+        );
+
+        emit Order(
+            id,
+            msg.sender,
+            tokenGet,
+            amountGet,
+            tokenGiven,
+            amountGiven,
+            block.timestamp
         );
     }
 }
