@@ -17,9 +17,11 @@ contract Exchange {
         uint256 id;
         address user;
         address tokenGet;
-        uint256 amountGet;
+        uint256 amountGet; // Original amount wanted
+        uint256 amountGetRemaining; // How much still needed
         address tokenGiven;
-        uint256 amountGiven;
+        uint256 amountGiven; // Original amount offered
+        uint256 amountGivenRemaining; // How much still available
         uint256 timestamp;
     }
 
@@ -59,12 +61,12 @@ contract Exchange {
 
     event OrderFilled(
         uint256 indexed id,
-        address indexed user,
-        address indexed filler,
-        address tokenGet,
-        uint256 amountGet,
-        address tokenGiven,
-        uint256 amountGiven,
+        address indexed user, // Order creator
+        address indexed filler, // Who filled it
+        uint256 fillAmountGet, // How much was filled this time
+        uint256 fillAmountGiven, // How much was given this time
+        uint256 remainingAmountGet, // How much still needed (0 = complete)
+        uint256 remainingAmountGiven, // How much still available (0 = complete)
         uint256 timestamp
     );
 
@@ -132,8 +134,10 @@ contract Exchange {
             msg.sender,
             tokenGet,
             amountGet,
+            amountGet, // amountGetRemaining = amountGet initially
             tokenGiven,
             amountGiven,
+            amountGiven, // amountGivenRemaining = amountGiven initially
             block.timestamp
         );
 
@@ -172,37 +176,63 @@ contract Exchange {
         );
     }
 
-    function fillOrder(uint256 id) public {
+    function fillOrder(uint256 id, uint256 fillAmountGet) public {
         _Order storage order = orders[id];
 
         require(order.id == id, "Order does not exist");
         require(!isOrderCancelled[id], "Order already cancelled");
-        require(!isOrderFilled[id], "Order already filled");
+        require(order.amountGetRemaining > 0, "Order already filled");
+        require(fillAmountGet > 0, "Fill amount must be greater than 0");
         require(
-            balances[order.user][order.tokenGiven] >= order.amountGiven,
-            "The user who put the order does not have enough balance of token given"
+            fillAmountGet <= order.amountGetRemaining,
+            "Fill amount exceeds remaining"
+        );
+
+        // Calculate proportional amounts
+        uint256 fillAmountGiven = (fillAmountGet * order.amountGiven) /
+            order.amountGet;
+
+        // Validate balances
+        require(
+            balances[order.user][order.tokenGiven] >= fillAmountGiven,
+            "Order creator has insufficient balance"
         );
         require(
-            balances[msg.sender][order.tokenGet] >= order.amountGet,
+            balances[msg.sender][order.tokenGet] >= fillAmountGet,
             "Insufficient balance"
         );
 
-        balances[order.user][order.tokenGiven] -= order.amountGiven;
-        balances[order.user][order.tokenGet] += order.amountGet;
-        balances[msg.sender][order.tokenGet] -= order.amountGet;
-        balances[msg.sender][order.tokenGiven] += order.amountGiven;
+        // Execute trade
+        balances[order.user][order.tokenGiven] -= fillAmountGiven;
+        balances[order.user][order.tokenGet] += fillAmountGet;
+        balances[msg.sender][order.tokenGet] -= fillAmountGet;
+        balances[msg.sender][order.tokenGiven] += fillAmountGiven;
 
-        isOrderFilled[id] = true;
+        // Update remaining amounts
+        order.amountGetRemaining -= fillAmountGet;
+        order.amountGivenRemaining -= fillAmountGiven;
 
+        // Mark as filled if completely filled
+        if (order.amountGetRemaining == 0) {
+            isOrderFilled[id] = true;
+        }
+
+        // Always emit single event (remainingAmount = 0 means complete)
         emit OrderFilled(
             id,
             order.user,
             msg.sender,
-            order.tokenGet,
-            order.amountGet,
-            order.tokenGiven,
-            order.amountGiven,
+            fillAmountGet, // This fill amount
+            fillAmountGiven, // This fill amount
+            order.amountGetRemaining, // 0 = completely filled
+            order.amountGivenRemaining, // 0 = completely filled
             block.timestamp
         );
+    }
+
+    // Convenience function for full fills
+    function fillOrderComplete(uint256 id) external {
+        _Order storage order = orders[id];
+        fillOrder(id, order.amountGetRemaining);
     }
 }

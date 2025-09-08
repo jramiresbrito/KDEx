@@ -34,7 +34,7 @@ describe("Exchange", () => {
     feeAccount = accounts[1];
     feePercentage = 1;
 
-    randomValue = Math.floor(Math.random() * 1000);
+    randomValue = Math.floor(Math.random() * 1000) + 20;  // Range: 20-1019 (safe for /4 operations)
 
     exchange = await exchangeFixture(feeAccount, feePercentage);
     exchangeAddress = await exchange.getAddress();
@@ -157,9 +157,11 @@ describe("Exchange", () => {
       user: orderArray[1],
       tokenGet: orderArray[2],
       amountGet: orderArray[3],
-      tokenGiven: orderArray[4],
-      amountGiven: orderArray[5],
-      timestamp: orderArray[6],
+      amountGetRemaining: orderArray[4],
+      tokenGiven: orderArray[5],
+      amountGiven: orderArray[6],
+      amountGivenRemaining: orderArray[7],
+      timestamp: orderArray[8],
     });
 
     beforeEach(async () => {
@@ -198,8 +200,10 @@ describe("Exchange", () => {
         user: deployer.address,
         tokenGet: token2Address,
         amountGet: tokens(randomValue / 2),
+        amountGetRemaining: tokens(randomValue / 2),    // Initially equals amountGet
         tokenGiven: token1Address,
         amountGiven: tokens(randomValue / 2),
+        amountGivenRemaining: tokens(randomValue / 2),  // Initially equals amountGiven
         timestamp: block.timestamp,
       });
     });
@@ -295,7 +299,7 @@ describe("Exchange", () => {
       // Give deployer token2 so they can fill their own order
       await approveAndDeposit(randomValue / 2, token2, token2Address, deployer);
 
-      await exchange.fillOrder(0);
+      await exchange.fillOrder(0, tokens(randomValue / 2)); // Fill completely
 
       await expect(exchange.cancelOrder(0)).to.be.revertedWith(
         "Order already filled"
@@ -314,7 +318,7 @@ describe("Exchange", () => {
 
       // Distribute tokens to test users
       await token2.transfer(orderFiller.address, tokens(randomValue * 2));
-      await token2.transfer(poorFiller.address, tokens(50)); // Give poorFiller some token2
+      await token2.transfer(poorFiller.address, tokens(randomValue));
 
       // Order creator deposits token1 and creates order wanting token2
       await approveAndDeposit(randomValue, token1, token1Address, orderCreator);
@@ -330,8 +334,9 @@ describe("Exchange", () => {
       await approveAndDeposit(randomValue, token2, token2Address, orderFiller);
     });
 
-    it("Should fill an order", async () => {
-      const tx = await exchange.connect(orderFiller).fillOrder(0);
+    it("Should fill an order completely", async () => {
+      const fillAmount = tokens(randomValue / 2); // Fill the entire order
+      const tx = await exchange.connect(orderFiller).fillOrder(0, fillAmount);
       const receipt = await tx.wait();
       const block = await ethers.provider.getBlock(receipt.blockNumber);
 
@@ -341,10 +346,10 @@ describe("Exchange", () => {
           0,
           orderCreator.address,
           orderFiller.address,
-          token2Address,
-          tokens(randomValue / 2),
-          token1Address,
-          tokens(randomValue / 2),
+          tokens(randomValue / 2),        // fillAmountGet
+          tokens(randomValue / 2),        // fillAmountGiven
+          0,                              // remainingAmountGet (0 = complete)
+          0,                              // remainingAmountGiven (0 = complete)
           block.timestamp
         );
 
@@ -361,32 +366,101 @@ describe("Exchange", () => {
         .to.equal(tokens(randomValue / 2)); // Filler gained token1
     });
 
+    it("Should partially fill an order", async () => {
+      const fillAmount = tokens(randomValue / 4); // Fill 50% of the order
+      const tx = await exchange.connect(orderFiller).fillOrder(0, fillAmount);
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      const fillAmountGiven = fillAmount; // 1:1 ratio in this test
+      const remainingGet = tokens(randomValue / 2) - fillAmount;
+      const remainingGiven = tokens(randomValue / 2) - fillAmountGiven;
+
+      await expect(tx)
+        .to.emit(exchange, "OrderFilled")
+        .withArgs(
+          0,
+          orderCreator.address,
+          orderFiller.address,
+          fillAmount,                     // fillAmountGet
+          fillAmountGiven,                // fillAmountGiven
+          remainingGet,                   // remainingAmountGet (>0 = partial)
+          remainingGiven,                 // remainingAmountGiven (>0 = partial)
+          block.timestamp
+        );
+
+      expect(await exchange.isOrderFilled(0)).to.equal(false); // Still open
+
+      // Verify remaining amounts in order
+      const order = await exchange.orders(0);
+      expect(order[4]).to.equal(remainingGet);    // amountGetRemaining
+      expect(order[7]).to.equal(remainingGiven);  // amountGivenRemaining
+    });
+
     it("Should fail if the order does not exist", async () => {
-      await expect(exchange.fillOrder(1)).to.be.revertedWith(
+      await expect(exchange.fillOrder(1, tokens(100))).to.be.revertedWith(
         "Order does not exist"
-      )
+      );
     });
 
     it("Should fail if the order is cancelled", async () => {
       await exchange.connect(orderCreator).cancelOrder(0);  // Creator cancels their order
-      await expect(exchange.connect(orderFiller).fillOrder(0)).to.be.revertedWith(
+      await expect(exchange.connect(orderFiller).fillOrder(0, tokens(100))).to.be.revertedWith(
         "Order already cancelled"
       );
     });
 
     it("Should fail if the order is filled", async () => {
-      await exchange.connect(orderFiller).fillOrder(0);  // Filler fills the order
-      await expect(exchange.connect(orderFiller).fillOrder(0)).to.be.revertedWith(
+      await exchange.connect(orderFiller).fillOrder(0, tokens(randomValue / 2));  // Fill completely
+      await expect(exchange.connect(orderFiller).fillOrder(0, tokens(1))).to.be.revertedWith(
         "Order already filled"
       );
     });
 
-    it("Should fail if the user does not have enough balance", async () => {
-      // Poor filler has some token2, but not enough to fill the order
-      await approveAndDeposit(10, token2, token2Address, poorFiller);
-      // Order requires randomValue/2 token2, but poorFiller only has 10
+    it("Should fail if fill amount is zero", async () => {
+      await expect(exchange.connect(orderFiller).fillOrder(0, 0)).to.be.revertedWith(
+        "Fill amount must be greater than 0"
+      );
+    });
 
-      await expect(exchange.connect(poorFiller).fillOrder(0)).to.be.revertedWith(
+    it("Should fail if fill amount exceeds remaining", async () => {
+      const excessiveAmount = tokens(randomValue * 2); // More than order amount
+      await expect(exchange.connect(orderFiller).fillOrder(0, excessiveAmount)).to.be.revertedWith(
+        "Fill amount exceeds remaining"
+      );
+    });
+
+    it("Should handle multiple partial fills", async () => {
+      const [_, __, secondFiller] = await ethers.getSigners();
+
+      // Give second filler some token2
+      await token2.transfer(secondFiller.address, tokens(randomValue));
+      await approveAndDeposit(randomValue / 4, token2, token2Address, secondFiller);
+
+      // First partial fill (25%)
+      const firstFill = tokens(randomValue / 8);
+      await exchange.connect(orderFiller).fillOrder(0, firstFill);
+
+      // Second partial fill (25%)
+      const secondFill = tokens(randomValue / 8);
+      await exchange.connect(secondFiller).fillOrder(0, secondFill);
+
+      // Order should still be open with 50% remaining
+      expect(await exchange.isOrderFilled(0)).to.equal(false);
+
+      const order = await exchange.orders(0);
+      expect(order[4]).to.equal(tokens(randomValue / 4)); // 50% remaining
+    });
+
+    it("Should fail if the user does not have enough balance", async () => {
+      // Poor filler has some token2, but not enough to fill what they want
+      const orderRequires = randomValue / 2;           // What the full order needs
+      const poorFillerHas = Math.floor(orderRequires / 4);  // Give them 25% of what order needs
+      const fillAttempt = Math.floor(orderRequires / 2);    // They try to fill 50% of order
+
+      await approveAndDeposit(poorFillerHas, token2, token2Address, poorFiller);
+
+      await expect(exchange.connect(poorFiller).fillOrder(0, tokens(fillAttempt))).to.be.revertedWith(
         "Insufficient balance"
       );
     });
