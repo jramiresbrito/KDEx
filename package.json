@@ -16,7 +16,14 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "security:audit": "npm audit --audit-level=moderate",
+    "security:audit:fix": "npm audit fix --audit-level=moderate --dry-run",
+    "security:check": "npm run security:audit && npm run security:deps",
+    "security:deps": "node scripts/check-deps.js",
+    "security:update": "npm run security:check && npm update --dry-run",
+    "preinstall": "node scripts/pre-install-security.js",
+    "postinstall": "npm run security:audit"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.8.2",

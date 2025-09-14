@@ -40,3 +40,12 @@ node_modules
 
 # Hardhat Ignition default folder for deployments against a local node
 ignition/deployments/chain-31337
+
+# macOS
+.DS_Store
+
+# Security - DON'T ignore these files (they're critical for supply chain security)
+# !.npmrc
+# !SECURITY.md
+# !scripts/check-deps.js
+# !scripts/pre-install-security.js
