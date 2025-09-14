@@ -7,7 +7,7 @@ export default buildModule("TokenModule", (m) => {
   const token = m.contract("Token", [
     "Kempaf Decentralized Exchange",
     "KDEX",
-    1_000_000,
+    1_000_000_000,
   ]);
 
   return { token };
